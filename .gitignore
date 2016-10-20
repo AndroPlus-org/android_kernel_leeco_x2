@@ -22,6 +22,7 @@
 *.lst
 *.symtypes
 *.order
+modules.builtin
 *.elf
 *.bin
 *.gz
@@ -35,6 +36,9 @@
 modules.builtin
 Module.symvers
 *.dwo
+*.lzo
+*.patch
+*.gcno
 
 #
 # Top-level generic files
@@ -46,11 +50,18 @@ Module.symvers
 /vmlinuz
 /System.map
 /Module.markers
+/Module.symvers
 
 #
 # Debian directory (make deb-pkg)
 #
 /debian/
+
+#
+# zImage from build script
+#
+/out/kernel/zImage
+/out/
 
 #
 # git files that we don't want to ignore even it they are dot-files
