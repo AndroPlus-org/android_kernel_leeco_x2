@@ -1,1 +1,0 @@
-cmd_drivers/mfd/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/mfd/built-in.o drivers/mfd/mfd-core.o drivers/mfd/wcd9xxx-core.o drivers/mfd/wcd9xxx-irq.o drivers/mfd/wcd9xxx-slimslave.o drivers/mfd/wcd9xxx-core-resource.o drivers/mfd/wcd9335-regmap.o drivers/mfd/wcd9335-tables.o 

@@ -1,1 +1,0 @@
-cmd_drivers/media/platform/msm/camera_v2/jpeg_dma/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/media/platform/msm/camera_v2/jpeg_dma/built-in.o drivers/media/platform/msm/camera_v2/jpeg_dma/msm_jpeg_dma_dev.o drivers/media/platform/msm/camera_v2/jpeg_dma/msm_jpeg_dma_hw.o 

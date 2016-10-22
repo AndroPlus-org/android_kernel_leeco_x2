@@ -1,1 +1,0 @@
-cmd_drivers/platform/msm/msm_bus/msm-buspm-dev.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o drivers/platform/msm/msm_bus/msm-buspm-dev.ko drivers/platform/msm/msm_bus/msm-buspm-dev.o drivers/platform/msm/msm_bus/msm-buspm-dev.mod.o

@@ -1,1 +1,0 @@
-cmd_net/bridge/br_netfilter.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o net/bridge/br_netfilter.ko net/bridge/br_netfilter.o net/bridge/br_netfilter.mod.o

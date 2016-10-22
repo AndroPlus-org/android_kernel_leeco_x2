@@ -1,7 +1,0 @@
-kernel/drivers/misc/qseecom.ko
-kernel/drivers/misc/hdcp.ko
-kernel/drivers/misc/compat_qseecom.ko
-kernel/drivers/misc/uid_cputime.ko
-kernel/drivers/misc/ir_maxq616.ko
-kernel/drivers/misc/ti_drv2667.ko
-kernel/drivers/misc/eeprom/at24.ko

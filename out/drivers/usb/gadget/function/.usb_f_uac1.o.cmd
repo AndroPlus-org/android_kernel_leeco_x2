@@ -1,1 +1,0 @@
-cmd_drivers/usb/gadget/function/usb_f_uac1.o := aarch64-linux-android-ld -EL    -r -o drivers/usb/gadget/function/usb_f_uac1.o drivers/usb/gadget/function/f_uac1.o drivers/usb/gadget/function/u_uac1.o 

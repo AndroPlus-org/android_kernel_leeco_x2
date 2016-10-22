@@ -1,1 +1,0 @@
-cmd_drivers/platform/msm/spmi/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/platform/msm/spmi/built-in.o drivers/platform/msm/spmi/spmi.o drivers/platform/msm/spmi/spmi-resources.o drivers/platform/msm/spmi/spmi-pmic-arb.o drivers/platform/msm/spmi/qpnp-int.o drivers/platform/msm/spmi/spmi-dbgfs.o 

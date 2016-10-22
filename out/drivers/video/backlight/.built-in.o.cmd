@@ -1,1 +1,0 @@
-cmd_drivers/video/backlight/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/video/backlight/built-in.o drivers/video/backlight/backlight.o drivers/video/backlight/generic_bl.o drivers/video/backlight/lm3697_bl.o 

@@ -1,1 +1,0 @@
-cmd_drivers/input/evbug.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o drivers/input/evbug.ko drivers/input/evbug.o drivers/input/evbug.mod.o

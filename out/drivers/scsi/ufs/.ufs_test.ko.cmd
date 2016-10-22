@@ -1,1 +1,0 @@
-cmd_drivers/scsi/ufs/ufs_test.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o drivers/scsi/ufs/ufs_test.ko drivers/scsi/ufs/ufs_test.o drivers/scsi/ufs/ufs_test.mod.o

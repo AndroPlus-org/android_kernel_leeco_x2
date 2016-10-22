@@ -1,1 +1,0 @@
-cmd_drivers/usb/misc/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/usb/misc/built-in.o drivers/usb/misc/ehset.o drivers/usb/misc/anx7418/built-in.o drivers/usb/misc/pi5usb30216a.o drivers/usb/misc/tusb302l.o drivers/usb/misc/cyccg.o drivers/usb/misc/cclogic.o 

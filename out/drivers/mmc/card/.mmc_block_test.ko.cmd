@@ -1,1 +1,0 @@
-cmd_drivers/mmc/card/mmc_block_test.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o drivers/mmc/card/mmc_block_test.ko drivers/mmc/card/mmc_block_test.o drivers/mmc/card/mmc_block_test.mod.o

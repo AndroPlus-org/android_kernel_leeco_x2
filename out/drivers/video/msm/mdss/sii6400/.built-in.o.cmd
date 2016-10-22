@@ -1,1 +1,0 @@
-cmd_drivers/video/fbdev/msm/../../msm/mdss/sii6400/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/video/fbdev/msm/../../msm/mdss/sii6400/built-in.o drivers/video/fbdev/msm/../../msm/mdss/sii6400/sii6400drv.o 

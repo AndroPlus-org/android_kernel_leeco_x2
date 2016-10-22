@@ -1,4 +1,0 @@
-kernel/drivers/video/msm/ba/msm_v4l2_ba.ko
-kernel/drivers/video/msm/ba/msm_ba_common.ko
-kernel/drivers/video/msm/ba/msm_ba.ko
-kernel/drivers/video/msm/ba/msm_ba_debug.ko
