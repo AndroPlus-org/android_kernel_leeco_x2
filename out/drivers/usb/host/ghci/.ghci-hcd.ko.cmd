@@ -1,0 +1,1 @@
+cmd_drivers/usb/host/ghci/ghci-hcd.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o drivers/usb/host/ghci/ghci-hcd.ko drivers/usb/host/ghci/ghci-hcd.o drivers/usb/host/ghci/ghci-hcd.mod.o

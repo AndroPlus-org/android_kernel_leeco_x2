@@ -1,0 +1,1 @@
+cmd_drivers/media/platform/msm/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/media/platform/msm/built-in.o drivers/media/platform/msm/vidc/built-in.o drivers/media/platform/msm/broadcast/built-in.o drivers/media/platform/msm/camera_v2/built-in.o 

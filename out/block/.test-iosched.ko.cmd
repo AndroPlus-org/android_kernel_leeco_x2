@@ -1,0 +1,1 @@
+cmd_block/test-iosched.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o block/test-iosched.ko block/test-iosched.o block/test-iosched.mod.o

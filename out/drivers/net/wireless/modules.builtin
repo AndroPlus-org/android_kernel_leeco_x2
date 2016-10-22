@@ -1,0 +1,4 @@
+kernel/drivers/net/wireless/cnss/cnss_pci.ko
+kernel/drivers/net/wireless/cnss/cnss_common.ko
+kernel/drivers/net/wireless/cnss_crypto/cnss_secif.ko
+kernel/drivers/net/wireless/cnss_prealloc/cnss_prealloc.ko

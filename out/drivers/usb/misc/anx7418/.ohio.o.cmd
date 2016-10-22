@@ -1,0 +1,1 @@
+cmd_drivers/usb/misc/anx7418/ohio.o := aarch64-linux-android-ld -EL    -r -o drivers/usb/misc/anx7418/ohio.o drivers/usb/misc/anx7418/anx_ohio_driver.o drivers/usb/misc/anx7418/anx_ohio_private_interface.o drivers/usb/misc/anx7418/anx_ohio_public_interface.o 

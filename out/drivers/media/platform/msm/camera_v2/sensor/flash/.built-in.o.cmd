@@ -1,0 +1,1 @@
+cmd_drivers/media/platform/msm/camera_v2/sensor/flash/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/media/platform/msm/camera_v2/sensor/flash/built-in.o drivers/media/platform/msm/camera_v2/sensor/flash/lm3643.o drivers/media/platform/msm/camera_v2/sensor/flash/msm_flash.o 

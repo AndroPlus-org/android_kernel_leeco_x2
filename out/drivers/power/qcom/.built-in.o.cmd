@@ -1,0 +1,1 @@
+cmd_drivers/power/qcom/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/power/qcom/built-in.o drivers/power/qcom/msm-pm.o drivers/power/qcom/pm-data.o drivers/power/qcom/lpm-stats.o drivers/power/qcom/pm-boot.o drivers/power/qcom/msm-core.o drivers/power/qcom/debug_core.o drivers/power/qcom/apm.o 

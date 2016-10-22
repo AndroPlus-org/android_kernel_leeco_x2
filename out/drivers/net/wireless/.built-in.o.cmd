@@ -1,0 +1,1 @@
+cmd_drivers/net/wireless/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/net/wireless/built-in.o drivers/net/wireless/ath/built-in.o drivers/net/wireless/cnss/built-in.o drivers/net/wireless/cnss_prealloc/built-in.o drivers/net/wireless/cnss_crypto/built-in.o 

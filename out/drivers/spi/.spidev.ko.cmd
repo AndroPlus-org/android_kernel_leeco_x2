@@ -1,0 +1,1 @@
+cmd_drivers/spi/spidev.ko := aarch64-linux-android-ld -EL -r  -T ../scripts/module-common.lds --build-id   --fix-cortex-a53-843419 -o drivers/spi/spidev.ko drivers/spi/spidev.o drivers/spi/spidev.mod.o

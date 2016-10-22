@@ -1,0 +1,8 @@
+kernel/drivers/input/touchscreen/of_touchscreen.ko
+kernel/drivers/input/touchscreen/atmel_mxt_ts_letv.ko
+kernel/drivers/input/touchscreen/gen_vkeys.ko
+kernel/drivers/input/touchscreen/hideep_letv/hideepm.ko
+kernel/drivers/input/touchscreen/synaptics_dsx_letv/synaptics_dsx_core.ko
+kernel/drivers/input/touchscreen/synaptics_dsx_letv/synaptics_dsx_rmi_dev.ko
+kernel/drivers/input/touchscreen/synaptics_dsx_letv/synaptics_dsx_fw_update.ko
+kernel/drivers/input/touchscreen/synaptics_dsx_letv/synaptics_dsx_test_reporting.ko

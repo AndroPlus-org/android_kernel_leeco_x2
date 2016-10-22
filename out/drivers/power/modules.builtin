@@ -1,0 +1,6 @@
+kernel/drivers/power/smb1351-charger.ko
+kernel/drivers/power/qpnp-fg.ko
+kernel/drivers/power/qpnp-smbcharger.ko
+kernel/drivers/power/pmic-voter.ko
+kernel/drivers/power/mhl_uevent.ko
+kernel/drivers/power/battery_current_limit.ko

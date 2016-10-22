@@ -1,0 +1,1 @@
+cmd_drivers/video/msm/ba/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/video/msm/ba/built-in.o drivers/video/msm/ba/msm_v4l2_ba.o drivers/video/msm/ba/msm_ba_common.o drivers/video/msm/ba/msm_ba.o drivers/video/msm/ba/msm_ba_debug.o 

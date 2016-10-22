@@ -1,0 +1,1 @@
+cmd_drivers/iommu/built-in.o :=  aarch64-linux-android-ld -EL    -r -o drivers/iommu/built-in.o drivers/iommu/iommu.o drivers/iommu/iommu-traces.o drivers/iommu/iommu-sysfs.o drivers/iommu/msm_dma_iommu_mapping.o drivers/iommu/io-pgtable.o drivers/iommu/io-pgtable-arm.o drivers/iommu/of_iommu.o drivers/iommu/iommu-debug.o drivers/iommu/arm-smmu.o 
