@@ -7,7 +7,7 @@ export PATH=~/aarch64-linux-android-4.9-kernel/bin/:$PATH
 export CROSS_COMPILE=aarch64-linux-android-
 export JOBS=8
 
-make -C $PWD O=$PWD/out ARCH=arm64 msm-perf_defconfig
+make -C $PWD O=$PWD/out x820_defconfig
 make -j$JOBS -C $PWD O=$PWD/out ARCH=arm64
 make -j$JOBS -C $PWD O=$PWD/out ARCH=arm64 modules
 
