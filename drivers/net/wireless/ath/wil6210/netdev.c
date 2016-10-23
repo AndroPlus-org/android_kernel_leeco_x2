@@ -14,14 +14,9 @@
  * OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
  */
 
-#include <linux/moduleparam.h>
 #include <linux/etherdevice.h>
 #include "wil6210.h"
 #include "txrx.h"
-
-static bool alt_ifname; /* = false; */
-module_param(alt_ifname, bool, S_IRUGO);
-MODULE_PARM_DESC(alt_ifname, " use an alternate interface name wigigN instead of wlanN");
 
 static int wil_open(struct net_device *ndev)
 {
@@ -65,7 +60,11 @@ static int wil_do_ioctl(struct net_device *ndev, struct ifreq *ifr, int cmd)
 {
 	struct wil6210_priv *wil = ndev_to_wil(ndev);
 
-	return wil_ioctl(wil, ifr->ifr_data, cmd);
+	int ret = wil_ioctl(wil, ifr->ifr_data, cmd);
+
+	wil_dbg_misc(wil, "ioctl(0x%04x) -> %d\n", cmd, ret);
+
+	return ret;
 }
 
 static const struct net_device_ops wil_netdev_ops = {
@@ -141,7 +140,6 @@ void *wil_if_alloc(struct device *dev)
 	struct wil6210_priv *wil;
 	struct ieee80211_channel *ch;
 	int rc = 0;
-	const char *ifname = alt_ifname ? "wigig%d" : "wlan%d";
 
 	wdev = wil_cfg80211_init(dev);
 	if (IS_ERR(wdev)) {
@@ -151,7 +149,6 @@ void *wil_if_alloc(struct device *dev)
 
 	wil = wdev_to_wil(wdev);
 	wil->wdev = wdev;
-	wil->radio_wdev = wdev;
 
 	wil_dbg_misc(wil, "%s()\n", __func__);
 
@@ -166,7 +163,7 @@ void *wil_if_alloc(struct device *dev)
 	ch = wdev->wiphy->bands[IEEE80211_BAND_60GHZ]->channels;
 	cfg80211_chandef_create(&wdev->preset_chandef, ch, NL80211_CHAN_NO_HT);
 
-	ndev = alloc_netdev(0, ifname, NET_NAME_UNKNOWN, wil_dev_setup);
+	ndev = alloc_netdev(0, "wlan%d", NET_NAME_UNKNOWN, wil_dev_setup);
 	if (!ndev) {
 		dev_err(dev, "alloc_netdev_mqs failed\n");
 		rc = -ENOMEM;

@@ -1974,20 +1974,6 @@ static inline int _check_region(unsigned long start, unsigned long size,
 	return (end > len);
 }
 
-static int check_vma_flags(struct vm_area_struct *vma,
-		unsigned int flags)
-{
-	unsigned long flags_requested = (VM_READ | VM_WRITE);
-
-	if (flags & KGSL_MEMFLAGS_GPUREADONLY)
-		flags_requested &= ~VM_WRITE;
-
-	if ((vma->vm_flags & flags_requested) == flags_requested)
-		return 0;
-
-	return -EFAULT;
-}
-
 static int check_vma(struct vm_area_struct *vma, struct file *vmfile,
 		struct kgsl_memdesc *memdesc)
 {
@@ -2001,7 +1987,7 @@ static int check_vma(struct vm_area_struct *vma, struct file *vmfile,
 	if (vma->vm_start != memdesc->useraddr ||
 		(memdesc->useraddr + memdesc->size) != vma->vm_end)
 		return -EINVAL;
-	return check_vma_flags(vma, memdesc->flags);
+	return 0;
 }
 
 static int memdesc_sg_virt(struct kgsl_memdesc *memdesc, struct file *vmfile)
@@ -2010,7 +1996,7 @@ static int memdesc_sg_virt(struct kgsl_memdesc *memdesc, struct file *vmfile)
 	long npages = 0, i;
 	size_t sglen = (size_t) (memdesc->size / PAGE_SIZE);
 	struct page **pages = NULL;
-	int write = ((memdesc->flags & KGSL_MEMFLAGS_GPUREADONLY) ? 0 : 1);
+	int write = (memdesc->flags & KGSL_MEMFLAGS_GPUREADONLY) != 0;
 
 	if (sglen == 0 || sglen >= LONG_MAX)
 		return -EINVAL;
@@ -2129,12 +2115,6 @@ static int kgsl_setup_dmabuf_useraddr(struct kgsl_device *device,
 	if (vma && vma->vm_file) {
 		int fd;
 
-		ret = check_vma_flags(vma, entry->memdesc.flags);
-		if (ret) {
-			up_read(&current->mm->mmap_sem);
-			return ret;
-		}
-
 		/*
 		 * Check to see that this isn't our own memory that we have
 		 * already mapped
@@ -2151,8 +2131,8 @@ static int kgsl_setup_dmabuf_useraddr(struct kgsl_device *device,
 	}
 	up_read(&current->mm->mmap_sem);
 
-	if (IS_ERR_OR_NULL(dmabuf))
-		return dmabuf ? PTR_ERR(dmabuf) : -ENODEV;
+	if (dmabuf == NULL)
+		return -ENODEV;
 
 	ret = kgsl_setup_dma_buf(device, pagetable, entry, dmabuf);
 	if (ret) {
@@ -2256,7 +2236,7 @@ static long _gpuobj_map_dma_buf(struct kgsl_device *device,
 	if (ret)
 		return ret;
 
-	if (buf.fd == 0)
+	if (buf.fd < 0)
 		return -EINVAL;
 
 	*fd = buf.fd;
@@ -3923,8 +3903,9 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 	disable_irq(device->pwrctrl.interrupt_num);
 
 	KGSL_DRV_INFO(device,
-		"dev_id %d regs phys 0x%08lx size 0x%08x\n",
-		device->id, device->reg_phys, device->reg_len);
+		"dev_id %d regs phys 0x%08lx size 0x%08x virt %p\n",
+		device->id, device->reg_phys, device->reg_len,
+		device->reg_virt);
 
 	rwlock_init(&device->context_lock);
 
@@ -3969,7 +3950,7 @@ int kgsl_device_platform_probe(struct kgsl_device *device)
 				PM_QOS_DEFAULT_VALUE);
 
 
-	device->events_wq = create_singlethread_workqueue("kgsl-events");
+	device->events_wq = create_workqueue("kgsl-events");
 
 	/* Initalize the snapshot engine */
 	kgsl_device_snapshot_init(device);

@@ -324,8 +324,7 @@ struct mmc_bkops_stats {
 struct mmc_bkops_info {
 	struct mmc_bkops_stats stats;
 	bool needs_check;
-	bool needs_bkops;
-	u32  retry_counter;
+	bool needs_manual;
 };
 
 enum mmc_pon_type {

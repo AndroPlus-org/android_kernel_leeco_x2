@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -59,14 +59,15 @@ irqreturn_t mhi_msi_ipa_handlr(int irq_number, void *dev_id)
 			cb_info.result = &client_handle->result;
 			cb_info.cb_reason = MHI_CB_XFER;
 			cb_info.chan = client_handle->chan_info.chan_nr;
-			cb_info.result->transaction_status = 0;
+			cb_info.result->transaction_status =
+					MHI_STATUS_SUCCESS;
 			client_info->mhi_client_cb(&cb_info);
 		}
 	}
 	return IRQ_HANDLED;
 }
 
-static int mhi_process_event_ring(
+static enum MHI_STATUS mhi_process_event_ring(
 		struct mhi_device_ctxt *mhi_dev_ctxt,
 		u32 ev_index,
 		u32 event_quota)
@@ -74,7 +75,7 @@ static int mhi_process_event_ring(
 	union mhi_event_pkt *local_rp = NULL;
 	union mhi_event_pkt *device_rp = NULL;
 	union mhi_event_pkt event_to_process;
-	int ret_val = 0;
+	enum MHI_STATUS ret_val = MHI_STATUS_SUCCESS;
 	struct mhi_event_ctxt *ev_ctxt = NULL;
 	union mhi_cmd_pkt *cmd_pkt = NULL;
 	union mhi_event_pkt *ev_ptr = NULL;
@@ -109,7 +110,7 @@ static int mhi_process_event_ring(
 				mhi_log(MHI_MSG_INFO, "First Reset CC event\n");
 				MHI_TRB_SET_INFO(CMD_TRB_TYPE, cmd_pkt,
 					MHI_PKT_TYPE_RESET_CHAN_DEFER_CMD);
-				ret_val = -EINPROGRESS;
+				ret_val = MHI_STATUS_CMD_PENDING;
 				break;
 			} else if ((MHI_TRB_READ_INFO(CMD_TRB_TYPE, cmd_pkt)
 				    == MHI_PKT_TYPE_RESET_CHAN_DEFER_CMD)) {
@@ -119,7 +120,8 @@ static int mhi_process_event_ring(
 					"Processing Reset CC event\n");
 			}
 		}
-		if (unlikely(0 != recycle_trb_and_ring(mhi_dev_ctxt,
+		if (unlikely(MHI_STATUS_SUCCESS !=
+					recycle_trb_and_ring(mhi_dev_ctxt,
 						local_ev_ctxt,
 						MHI_RING_TYPE_EVENT_RING,
 						ev_index)))
@@ -195,7 +197,7 @@ static int mhi_process_event_ring(
 						MHI_RING_TYPE_EVENT_RING,
 						ev_index,
 						ev_ctxt->mhi_event_read_ptr);
-		ret_val = 0;
+		ret_val = MHI_STATUS_SUCCESS;
 		--event_quota;
 	}
 	return ret_val;
@@ -252,7 +254,7 @@ int parse_event_thread(void *ctxt)
 				    mhi_process_event_ring(mhi_dev_ctxt, i,
 				     mhi_dev_ctxt->ev_ring_props[i].nr_desc);
 				if (ret_val_process_event ==
-					-EINPROGRESS)
+					MHI_STATUS_CMD_PENDING)
 					atomic_inc(ev_pen_ptr);
 			}
 		}
@@ -262,7 +264,7 @@ int parse_event_thread(void *ctxt)
 
 struct mhi_result *mhi_poll(struct mhi_client_handle *client_handle)
 {
-	int ret_val;
+	enum MHI_STATUS ret_val;
 
 	client_handle->result.buf_addr = NULL;
 	client_handle->result.bytes_xferd = 0;
@@ -270,7 +272,7 @@ struct mhi_result *mhi_poll(struct mhi_client_handle *client_handle)
 	ret_val = mhi_process_event_ring(client_handle->mhi_dev_ctxt,
 				client_handle->event_ring_index,
 				1);
-	if (ret_val)
+	if (MHI_STATUS_SUCCESS != ret_val)
 		mhi_log(MHI_MSG_INFO, "NAPI failed to process event ring\n");
 	return &(client_handle->result);
 }

@@ -96,7 +96,7 @@ module_param(poolsize_dci, uint, 0);
 #ifdef CONFIG_DIAGFWD_BRIDGE_CODE
 /* Used for reading data from the remote device. */
 static unsigned int itemsize_mdm = DIAG_MDM_BUF_SIZE;
-static unsigned int poolsize_mdm = 18;
+static unsigned int poolsize_mdm = 9;
 module_param(itemsize_mdm, uint, 0);
 module_param(poolsize_mdm, uint, 0);
 
@@ -113,7 +113,7 @@ module_param(itemsize_mdm_dci, uint, 0);
  * Don't expose the itemsize since it is constant.
  */
 static unsigned int itemsize_mdm_usb = sizeof(struct diag_request);
-static unsigned int poolsize_mdm_usb = 18;
+static unsigned int poolsize_mdm_usb = 9;
 module_param(poolsize_mdm_usb, uint, 0);
 
 /*
@@ -1155,7 +1155,7 @@ int diag_md_session_create(int mode, int peripheral_mask, int proc)
 	 * then return invalid param
 	 */
 	if (driver->md_session_mode == DIAG_MD_NORMAL)
-		return -EINVAL;
+		return 0;//-EINVAL;
 	if (driver->md_session_mode == DIAG_MD_PERIPHERAL
 	    && mode == DIAG_MD_NORMAL)
 		return -EINVAL;
@@ -1340,7 +1340,6 @@ static int diag_md_session_check(int curr_mode, int req_mode,
 				 uint8_t *change_mode)
 {
 	int err = 0;
-	struct diag_md_session_t *session_info = NULL;
 
 	if (!param || !change_mode)
 		return -EIO;
@@ -1405,10 +1404,8 @@ static int diag_md_session_check(int curr_mode, int req_mode,
 					 "another instance running\n");
 				*change_mode = 0;
 				return -EINVAL;
-			}
-			session_info = diag_md_session_get_pid(current->tgid);
-			diag_md_session_close(session_info);
-			return 0;
+			} else
+				return 0;
 		}
 
 		if (param->mode_param == DIAG_MD_NORMAL) {
@@ -1545,7 +1542,6 @@ static int diag_switch_logging(struct diag_logging_mode_param_t *param)
 		queue_work(driver->diag_real_time_wq,
 			   &driver->diag_real_time_work);
 	}
-
 	return 0;
 fail:
 	return err;
@@ -2144,6 +2140,7 @@ long diagchar_ioctl(struct file *filp,
 		result = diag_ioctl_hdlc_toggle(ioarg);
 		break;
 	}
+
 	return result;
 }
 
@@ -3145,6 +3142,8 @@ static void diag_debug_init(void)
 	 */
 	diag_debug_mask = DIAG_DEBUG_PERIPHERALS | DIAG_DEBUG_DCI |
 				DIAG_DEBUG_BRIDGE;
+	//enable all diag logs
+	diag_debug_mask = 0xff;
 }
 #else
 static void diag_debug_init(void)

@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -23,12 +23,12 @@
 #include "mdss_debug.h"
 
 #ifdef CONFIG_FB_MSM_MDSS_XLOG_DEBUG
-#define XLOG_DEFAULT_ENABLE 1
+#define XLOG_DEFAULT_ENABLE 0
 #else
 #define XLOG_DEFAULT_ENABLE 0
 #endif
 
-#define XLOG_DEFAULT_PANIC 1
+#define XLOG_DEFAULT_PANIC 0
 #define XLOG_DEFAULT_REGDUMP 0x2 /* dump in RAM */
 #define XLOG_DEFAULT_DBGBUSDUMP 0x2 /* dump in RAM */
 #define XLOG_DEFAULT_VBIF_DBGBUSDUMP 0x2 /* dump in RAM */
@@ -405,8 +405,8 @@ static void mdss_dump_vbif_debug_bus(u32 bus_dump_flag,
 	pr_info("========End VBIF Debug bus=========\n");
 }
 
-void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag, char *addr,
-	int len, u32 **dump_mem, bool from_isr)
+static void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag,
+	char *addr, int len, u32 **dump_mem)
 {
 	struct mdss_data_type *mdata = mdss_mdp_get_mdata();
 	bool in_log, in_mem;
@@ -440,9 +440,7 @@ void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag, char *addr,
 		}
 	}
 
-	if (!from_isr)
-		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
-
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_ON);
 	for (i = 0; i < len; i++) {
 		u32 x0, x4, x8, xc;
 
@@ -464,9 +462,7 @@ void mdss_dump_reg(const char *dump_name, u32 reg_dump_flag, char *addr,
 
 		addr += 16;
 	}
-
-	if (!from_isr)
-		mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
+	mdss_mdp_clk_ctrl(MDP_BLOCK_POWER_OFF);
 }
 
 static void mdss_dump_reg_by_ranges(struct mdss_debug_base *dbg,
@@ -495,8 +491,7 @@ static void mdss_dump_reg_by_ranges(struct mdss_debug_base *dbg,
 				addr, xlog_node->offset.start,
 				xlog_node->offset.end);
 			mdss_dump_reg((const char *)xlog_node->range_name,
-				reg_dump_flag, addr, len, &xlog_node->reg_dump,
-				false);
+				reg_dump_flag, addr, len, &xlog_node->reg_dump);
 		}
 	} else {
 		/* If there is no list to dump ranges, dump all registers */
@@ -505,7 +500,7 @@ static void mdss_dump_reg_by_ranges(struct mdss_debug_base *dbg,
 		addr = dbg->base;
 		len = dbg->max_offset;
 		mdss_dump_reg((const char *)dbg->name, reg_dump_flag, addr,
-			len, &dbg->reg_dump, false);
+			len, &dbg->reg_dump);
 	}
 }
 

@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -57,8 +57,13 @@ static DEFINE_PER_CPU(struct memlat_hwmon_data, pm_data);
 struct cpu_grp_info {
 	cpumask_t cpus;
 	struct memlat_hwmon hw;
-	struct notifier_block arm_memlat_cpu_notif;
 };
+
+static DEFINE_MUTEX(notif_mutex);
+static unsigned int notif_refcount;
+static void notif_unregister_work_fn(struct work_struct *work);
+static void hotplug_notif_unregister(void);
+static DECLARE_WORK(notif_unregister_work, notif_unregister_work_fn);
 
 static unsigned long compute_freq(struct memlat_hwmon_data *hw_data,
 						unsigned long cyc_cnt)
@@ -150,7 +155,7 @@ static void stop_hwmon(struct memlat_hwmon *hw)
 	for_each_cpu(cpu, &cpu_grp->cpus) {
 		hw_data = &per_cpu(pm_data, cpu);
 		if (hw_data->init_pending)
-			hw_data->init_pending = false;
+			hotplug_notif_unregister();
 		else
 			delete_events(hw_data);
 
@@ -162,7 +167,6 @@ static void stop_hwmon(struct memlat_hwmon *hw)
 	}
 	put_online_cpus();
 
-	unregister_cpu_notifier(&cpu_grp->arm_memlat_cpu_notif);
 }
 
 static struct perf_event_attr *alloc_attr(void)
@@ -235,8 +239,38 @@ static int arm_memlat_cpu_callback(struct notifier_block *nb,
 		pr_warn("Failed to create perf event for CPU%lu\n", cpu);
 
 	hw_data->init_pending = false;
+	hotplug_notif_unregister();
 
 	return NOTIFY_OK;
+}
+
+static struct notifier_block arm_memlat_cpu_notifier = {
+	.notifier_call = arm_memlat_cpu_callback,
+};
+
+static void notif_unregister_work_fn(struct work_struct *work)
+{
+	unregister_cpu_notifier(&arm_memlat_cpu_notifier);
+}
+
+static void hotplug_notif_register(void)
+{
+	mutex_lock(&notif_mutex);
+	if (!notif_refcount) {
+		flush_work(&notif_unregister_work);
+		register_cpu_notifier(&arm_memlat_cpu_notifier);
+	}
+	notif_refcount++;
+	mutex_unlock(&notif_mutex);
+}
+
+static void hotplug_notif_unregister(void)
+{
+	mutex_lock(&notif_mutex);
+	notif_refcount--;
+	if (!notif_refcount)
+		schedule_work(&notif_unregister_work);
+	mutex_unlock(&notif_mutex);
 }
 
 static int start_hwmon(struct memlat_hwmon *hw)
@@ -246,14 +280,13 @@ static int start_hwmon(struct memlat_hwmon *hw)
 	struct cpu_grp_info *cpu_grp = container_of(hw,
 					struct cpu_grp_info, hw);
 
-	register_cpu_notifier(&cpu_grp->arm_memlat_cpu_notif);
-
 	get_online_cpus();
 	for_each_cpu(cpu, &cpu_grp->cpus) {
 		hw_data = &per_cpu(pm_data, cpu);
 		ret = set_events(hw_data, cpu);
 		if (ret) {
 			if (!cpu_online(cpu)) {
+				hotplug_notif_register();
 				hw_data->init_pending = true;
 				ret = 0;
 			} else {
@@ -304,7 +337,6 @@ static int arm_memlat_mon_driver_probe(struct platform_device *pdev)
 	cpu_grp = devm_kzalloc(dev, sizeof(*cpu_grp), GFP_KERNEL);
 	if (!cpu_grp)
 		return -ENOMEM;
-	cpu_grp->arm_memlat_cpu_notif.notifier_call = arm_memlat_cpu_callback;
 	hw = &cpu_grp->hw;
 
 	hw->dev = dev;

@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -333,9 +333,6 @@ static int dsi_update_clk_state(struct dsi_core_clks *c_clks, u32 c_state,
 	} else {
 		mngr = NULL;
 	}
-
-	if (!mngr)
-		return -EINVAL;
 
 	pr_debug("%s: c_state = %d, l_state = %d\n", mngr ? mngr->name : "NA",
 		 c_clks ? c_state : -1, l_clks ? l_state : -1);
@@ -722,30 +719,8 @@ error:
 	return rc;
 }
 
-bool is_dsi_clk_in_ecg_state(void *client)
-{
-	struct mdss_dsi_clk_client_info *c = client;
-	struct mdss_dsi_clk_mngr *mngr;
-	bool is_ecg = false;
-
-
-	if (!client) {
-		pr_err("Invalid params, client = %p\n", client);
-		goto end;
-	}
-
-	mngr = c->mngr;
-
-	mutex_lock(&mngr->clk_mutex);
-	is_ecg = (c->core_clk_state == MDSS_DSI_CLK_EARLY_GATE);
-	mutex_unlock(&mngr->clk_mutex);
-
-end:
-	return is_ecg;
-}
-
 int mdss_dsi_clk_req_state(void *client, enum mdss_dsi_clk_type clk,
-	enum mdss_dsi_clk_state state, u32 index)
+			   enum mdss_dsi_clk_state state)
 {
 	int rc = 0;
 	struct mdss_dsi_clk_client_info *c = client;
@@ -766,7 +741,7 @@ int mdss_dsi_clk_req_state(void *client, enum mdss_dsi_clk_type clk,
 	       c->name, mngr->name, clk, state, c->core_clk_state,
 	       c->link_clk_state);
 
-	MDSS_XLOG(index, clk, state, c->core_clk_state, c->link_clk_state);
+	MDSS_XLOG(clk, state, c->core_clk_state, c->link_clk_state);
 	/*
 	 * Refcount handling rules:
 	 *	1. Increment refcount whenever ON is called
@@ -832,7 +807,7 @@ int mdss_dsi_clk_req_state(void *client, enum mdss_dsi_clk_type clk,
 	pr_debug("[%s]%s: change=%d, Core (ref=%d, state=%d), Link (ref=%d, state=%d)\n",
 		 c->name, mngr->name, changed, c->core_refcount,
 		 c->core_clk_state, c->link_refcount, c->link_clk_state);
-	MDSS_XLOG(index, clk, state, c->core_clk_state, c->link_clk_state);
+	MDSS_XLOG(clk, state, c->core_clk_state, c->link_clk_state);
 
 	if (changed) {
 		rc = dsi_recheck_clk_state(mngr);

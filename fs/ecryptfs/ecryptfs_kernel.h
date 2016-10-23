@@ -625,10 +625,7 @@ int ecryptfs_encrypt_and_encode_filename(
 	const char *name, size_t name_size);
 struct dentry *ecryptfs_lower_dentry(struct dentry *this_dentry);
 void ecryptfs_dump_hex(char *data, int bytes);
-void ecryptfs_dump_salt_hex(char *data, int key_size,
-		const struct ecryptfs_crypt_stat *crypt_stat);
-extern void ecryptfs_dump_cipher(struct ecryptfs_crypt_stat *stat);
-
+void ecryptfs_dump_salt_hex(char *data, int key_size, char *cipher);
 int virt_to_scatterlist(const void *addr, int size, struct scatterlist *sg,
 			int sg_size);
 int ecryptfs_compute_root_iv(struct ecryptfs_crypt_stat *crypt_stat);
@@ -783,20 +780,16 @@ void ecryptfs_freepage(struct page *page);
 
 struct ecryptfs_events *get_events(void);
 
-size_t ecryptfs_get_salt_size_for_cipher(
-		const struct ecryptfs_crypt_stat *crypt_stat);
-
-size_t ecryptfs_get_salt_size_for_cipher_mount(
-		const struct ecryptfs_mount_crypt_stat *mount_crypt_stat);
+size_t ecryptfs_get_salt_size_for_cipher(const char *cipher);
 
 size_t ecryptfs_get_key_size_to_enc_data(
-		const struct ecryptfs_crypt_stat *crypt_stat);
+		struct ecryptfs_crypt_stat *crypt_stat);
 
 size_t ecryptfs_get_key_size_to_store_key(
-		const struct ecryptfs_crypt_stat *crypt_stat);
+		struct ecryptfs_crypt_stat *crypt_stat);
 
 size_t ecryptfs_get_key_size_to_restore_key(size_t stored_key_size,
-		const struct ecryptfs_crypt_stat *crypt_stat);
+		const char *cipher);
 
 bool ecryptfs_check_space_for_salt(const size_t key_size,
 		const size_t salt_size);

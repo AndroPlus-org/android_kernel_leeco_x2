@@ -229,8 +229,7 @@ int cfg80211_mlme_auth(struct cfg80211_registered_device *rdev,
 		return -EALREADY;
 
 	req.bss = cfg80211_get_bss(&rdev->wiphy, chan, bssid, ssid, ssid_len,
-				   IEEE80211_BSS_TYPE_ESS,
-				   IEEE80211_PRIVACY_ANY);
+				   WLAN_CAPABILITY_ESS, WLAN_CAPABILITY_ESS);
 	if (!req.bss)
 		return -ENOENT;
 
@@ -297,8 +296,7 @@ int cfg80211_mlme_assoc(struct cfg80211_registered_device *rdev,
 				   rdev->wiphy.vht_capa_mod_mask);
 
 	req->bss = cfg80211_get_bss(&rdev->wiphy, chan, bssid, ssid, ssid_len,
-				    IEEE80211_BSS_TYPE_ESS,
-				    IEEE80211_PRIVACY_ANY);
+				    WLAN_CAPABILITY_ESS, WLAN_CAPABILITY_ESS);
 	if (!req->bss)
 		return -ENOENT;
 

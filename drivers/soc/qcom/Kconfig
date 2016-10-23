@@ -93,6 +93,11 @@ config MSM_MEMORY_DUMP_V2
 	  of deadlocks or cpu hangs these dump regions are captured to
 	  give a snapshot of the system at the time of the crash.
 
+config DEEP_SLEEP_LED_SWITCH
+	bool "deep sleep led indicator"
+	help
+	  This will enable deep sleep led indicating for system status.
+
 config MSM_DEBUG_LAR_UNLOCK
 	bool "MSM Debug LAR Unlock Support"
 	depends on MSM_MEMORY_DUMP_V2
@@ -551,16 +556,6 @@ config MSM_IPC_ROUTER_GLINK_XPRT
 	  a System-on-Chip(SoC). When the GLINK channels become available,
 	  this layer registers a transport with IPC Router and enable
 	  message exchange.
-
-config MSM_IPC_ROUTER_MHI_XPRT
-	depends on MSM_MHI
-	depends on IPC_ROUTER
-	bool "MSM MHI XPRT Layer"
-	help
-	  MHI Transport Layer that enables off-chip communication of
-	  IPC Router. When the MHI endpoint becomes available, this layer
-	  registers the transport with IPC Router and enable message
-	  exchange.
 
 config MSM_SYSTEM_HEALTH_MONITOR
 	bool "System Health Monitor"

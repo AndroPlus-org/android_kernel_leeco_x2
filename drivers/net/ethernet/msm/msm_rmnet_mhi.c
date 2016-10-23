@@ -25,7 +25,6 @@
 #include <linux/debugfs.h>
 #include <linux/ipc_logging.h>
 #include <linux/device.h>
-#include <linux/errno.h>
 
 #define RMNET_MHI_DRIVER_NAME "rmnet_mhi"
 #define RMNET_MHI_DEV_NAME    "rmnet_mhi%d"
@@ -54,18 +53,16 @@ struct __packed mhi_skb_priv {
 	size_t	   dma_size;
 };
 
-enum DBG_LVL rmnet_msg_lvl = MSG_CRITICAL;
-
-#ifdef CONFIG_MSM_MHI_DEBUG
 enum DBG_LVL rmnet_ipc_log_lvl = MSG_VERBOSE;
-#else
-enum DBG_LVL rmnet_ipc_log_lvl = MSG_ERROR;
-#endif
+enum DBG_LVL rmnet_msg_lvl = MSG_CRITICAL;
+static unsigned int rmnet_log_override;
 
 module_param(rmnet_msg_lvl , uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(rmnet_msg_lvl, "dbg lvl");
 module_param(rmnet_ipc_log_lvl, uint, S_IRUGO | S_IWUSR);
 MODULE_PARM_DESC(rmnet_ipc_log_lvl, "dbg lvl");
+module_param(rmnet_log_override , uint, S_IRUGO | S_IWUSR);
+MODULE_PARM_DESC(rmnet_log_override, "dbg class");
 
 unsigned int mru = MHI_DEFAULT_MRU;
 module_param(mru, uint, S_IRUGO | S_IWUSR);
@@ -74,11 +71,16 @@ MODULE_PARM_DESC(mru, "MRU interface setting");
 void *rmnet_ipc_log;
 
 #define rmnet_log(_msg_lvl, _msg, ...) do { \
-		if ((_msg_lvl) >= rmnet_msg_lvl) \
-			pr_alert("[%s] " _msg, __func__, ##__VA_ARGS__);\
-		if (rmnet_ipc_log && ((_msg_lvl) >= rmnet_ipc_log_lvl))	\
-			ipc_log_string(rmnet_ipc_log,			\
-			       "[%s] " _msg, __func__, ##__VA_ARGS__);	\
+		DEFINE_DYNAMIC_DEBUG_METADATA(descriptor, _msg);	 \
+		if ((rmnet_log_override ||				 \
+		    unlikely(descriptor.flags & _DPRINTK_FLAGS_PRINT)) &&\
+		    (_msg_lvl) >= rmnet_msg_lvl)			 \
+			pr_alert("[%s] " _msg, __func__, ##__VA_ARGS__); \
+		if ((rmnet_log_override ||				      \
+			unlikely(descriptor.flags & _DPRINTK_FLAGS_PRINT)) && \
+			rmnet_ipc_log && ((_msg_lvl) >= rmnet_ipc_log_lvl))   \
+			ipc_log_string(rmnet_ipc_log,			 \
+			       "[%s] " _msg, __func__, ##__VA_ARGS__);	 \
 } while (0)
 
 unsigned long tx_interrupts_count[MHI_RMNET_DEVICE_COUNT];
@@ -137,24 +139,19 @@ struct rmnet_mhi_private {
 	enum MHI_CLIENT_CHANNEL       rx_channel;
 	struct sk_buff_head           tx_buffers;
 	struct sk_buff_head           rx_buffers;
-	atomic_t		      rx_pool_len;
 	uint32_t                      mru;
 	struct napi_struct            napi;
 	gfp_t                         allocation_flags;
 	uint32_t                      tx_buffers_max;
 	uint32_t                      rx_buffers_max;
-	u32			      alloc_fail;
 	u32			      tx_enabled;
 	u32			      rx_enabled;
 	u32			      mhi_enabled;
 	struct net_device	      *dev;
 	atomic_t		      irq_masked_cntr;
-	spinlock_t		      out_chan_full_lock; /* tx queue lock */
+	rwlock_t		      out_chan_full_lock;
 	atomic_t		      pending_data;
 	struct sk_buff		      *frag_skb;
-	struct work_struct	      alloc_work;
-	/* lock to queue hardware and internal queue */
-	spinlock_t		      alloc_lock;
 };
 
 static struct rmnet_mhi_private rmnet_mhi_ctxt_list[MHI_RMNET_DEVICE_COUNT];
@@ -233,103 +230,29 @@ static __be16 rmnet_mhi_ip_type_trans(struct sk_buff *skb)
 	return protocol;
 }
 
-static int rmnet_alloc_rx(struct rmnet_mhi_private *rmnet_mhi_ptr,
-			  gfp_t alloc_flags)
-{
-	u32 cur_mru = rmnet_mhi_ptr->mru;
-	struct mhi_skb_priv *skb_priv;
-	unsigned long flags;
-	int ret;
-	struct sk_buff *skb;
-
-	while (atomic_read(&rmnet_mhi_ptr->rx_pool_len) <
-	       rmnet_mhi_ptr->rx_buffers_max) {
-		skb = alloc_skb(cur_mru, alloc_flags);
-		if (!skb) {
-			rmnet_log(MSG_INFO,
-				  "SKB Alloc failed with flags:0x%x\n",
-				  alloc_flags);
-			return -ENOMEM;
-		}
-		skb_priv = (struct mhi_skb_priv *)(skb->cb);
-		skb_priv->dma_size = cur_mru - MHI_RX_HEADROOM;
-		skb_priv->dma_addr = 0;
-		skb_reserve(skb, MHI_RX_HEADROOM);
-
-		/* These steps must be in atomic context */
-		spin_lock_irqsave(&rmnet_mhi_ptr->alloc_lock, flags);
-
-		/* It's possible by the time alloc_skb (GFP_KERNEL)
-		 * returns we already called rmnet_alloc_rx
-		 * in atomic context and allocated memory using
-		 * GFP_ATOMIC and returned.
-		 */
-		if (unlikely(atomic_read(&rmnet_mhi_ptr->rx_pool_len) >=
-			     rmnet_mhi_ptr->rx_buffers_max)) {
-			spin_unlock_irqrestore(&rmnet_mhi_ptr->alloc_lock,
-					       flags);
-			dev_kfree_skb_any(skb);
-			return 0;
-		}
-
-		ret = mhi_queue_xfer(
-				     rmnet_mhi_ptr->rx_client_handle,
-				     skb->data,
-				     skb_priv->dma_size,
-				     MHI_EOT);
-		if (unlikely(ret != 0)) {
-			rmnet_log(MSG_CRITICAL,
-				  "mhi_queue_xfer failed, error %d", ret);
-			spin_unlock_irqrestore(&rmnet_mhi_ptr->alloc_lock,
-					       flags);
-			dev_kfree_skb_any(skb);
-			return ret;
-		}
-		skb_queue_tail(&rmnet_mhi_ptr->rx_buffers, skb);
-		atomic_inc(&rmnet_mhi_ptr->rx_pool_len);
-		spin_unlock_irqrestore(&rmnet_mhi_ptr->alloc_lock, flags);
-	}
-
-	return 0;
-}
-
-static void rmnet_mhi_alloc_work(struct work_struct *work)
-{
-	struct rmnet_mhi_private *rmnet_mhi_ptr = container_of(work,
-				    struct rmnet_mhi_private,
-				    alloc_work);
-	int ret;
-
-	rmnet_log(MSG_INFO, "Entered\n");
-	ret = rmnet_alloc_rx(rmnet_mhi_ptr,
-			     rmnet_mhi_ptr->allocation_flags);
-	BUG_ON(ret == -ENOMEM);
-	rmnet_log(MSG_INFO, "Exit\n");
-}
-
 static int rmnet_mhi_poll(struct napi_struct *napi, int budget)
 {
 	int received_packets = 0;
 	struct net_device *dev = napi->dev;
 	struct rmnet_mhi_private *rmnet_mhi_ptr =
 			*(struct rmnet_mhi_private **)netdev_priv(dev);
-	int res = 0;
+	enum MHI_STATUS res = MHI_STATUS_reserved;
 	bool should_reschedule = true;
 	struct sk_buff *skb;
 	struct mhi_skb_priv *skb_priv;
-	int r;
+	int r, cur_mru;
 
 	rmnet_log(MSG_VERBOSE, "Entered\n");
 	rmnet_mhi_ptr->mru = mru;
 	while (received_packets < budget) {
 		struct mhi_result *result =
 		      mhi_poll(rmnet_mhi_ptr->rx_client_handle);
-		if (result->transaction_status == -ENOTCONN) {
+		if (result->transaction_status == MHI_STATUS_DEVICE_NOT_READY) {
 			rmnet_log(MSG_INFO,
 				  "Transaction status not ready, continuing\n");
 			break;
-		} else if (result->transaction_status != 0 &&
-			   result->transaction_status != -EOVERFLOW) {
+		} else if (result->transaction_status != MHI_STATUS_SUCCESS &&
+			   result->transaction_status != MHI_STATUS_OVERFLOW) {
 			rmnet_log(MSG_CRITICAL,
 				  "mhi_poll failed, error %d\n",
 				  result->transaction_status);
@@ -338,11 +261,12 @@ static int rmnet_mhi_poll(struct napi_struct *napi, int budget)
 
 		/* Nothing more to read, or out of buffers in MHI layer */
 		if (unlikely(!result->buf_addr || !result->bytes_xferd)) {
+			rmnet_log(MSG_CRITICAL,
+				  "Not valid buff not rescheduling\n");
 			should_reschedule = false;
 			break;
 		}
 
-		atomic_dec(&rmnet_mhi_ptr->rx_pool_len);
 		skb = skb_dequeue(&(rmnet_mhi_ptr->rx_buffers));
 		if (unlikely(!skb)) {
 			rmnet_log(MSG_CRITICAL,
@@ -358,7 +282,7 @@ static int rmnet_mhi_poll(struct napi_struct *napi, int budget)
 		skb->dev = dev;
 		skb->protocol = rmnet_mhi_ip_type_trans(skb);
 
-		if (result->transaction_status == -EOVERFLOW)
+		if (result->transaction_status == MHI_STATUS_OVERFLOW)
 			r = rmnet_mhi_process_fragment(rmnet_mhi_ptr, skb, 1);
 		else
 			r = rmnet_mhi_process_fragment(rmnet_mhi_ptr, skb, 0);
@@ -374,15 +298,44 @@ static int rmnet_mhi_poll(struct napi_struct *napi, int budget)
 		dev->stats.rx_packets++;
 		dev->stats.rx_bytes += result->bytes_xferd;
 
-	} /* while (received_packets < budget) or any other error */
+		/* Need to allocate a new buffer instead of this one */
+		cur_mru = rmnet_mhi_ptr->mru;
+		skb = alloc_skb(cur_mru, GFP_ATOMIC);
+		if (unlikely(!skb)) {
+			rmnet_log(MSG_CRITICAL,
+				  "Can't allocate a new RX buffer for MHI");
+			break;
+		}
+		skb_priv = (struct mhi_skb_priv *)(skb->cb);
+		skb_priv->dma_size = cur_mru;
 
-	/* Queue new buffers */
-	res = rmnet_alloc_rx(rmnet_mhi_ptr, GFP_ATOMIC);
-	if (res == -ENOMEM) {
-		rmnet_log(MSG_INFO, "out of mem, queuing bg worker\n");
-		rmnet_mhi_ptr->alloc_fail++;
-		schedule_work(&rmnet_mhi_ptr->alloc_work);
-	}
+		rmnet_log(MSG_VERBOSE,
+		  "Allocated SKB of MRU 0x%x, SKB_DATA 0%p SKB_LEN 0x%x\n",
+				rmnet_mhi_ptr->mru, skb->data, skb->len);
+		/* Reserve headroom, tail == data */
+		skb_reserve(skb, MHI_RX_HEADROOM);
+		skb_priv->dma_size -= MHI_RX_HEADROOM;
+		skb_priv->dma_addr = 0;
+
+		rmnet_log(MSG_VERBOSE,
+			 "Mapped SKB %p to DMA Addr 0x%lx, DMA_SIZE: 0x%lx\n",
+			  skb->data,
+			  (uintptr_t)skb->data,
+			  (uintptr_t)skb_priv->dma_size);
+
+
+		res = mhi_queue_xfer(
+			rmnet_mhi_ptr->rx_client_handle,
+			skb->data, skb_priv->dma_size, MHI_EOT);
+
+		if (unlikely(MHI_STATUS_SUCCESS != res)) {
+			rmnet_log(MSG_CRITICAL,
+				"mhi_queue_xfer failed, error %d", res);
+			dev_kfree_skb_irq(skb);
+			break;
+		}
+		skb_queue_tail(&rmnet_mhi_ptr->rx_buffers, skb);
+	} /* while (received_packets < budget) or any other error */
 
 	napi_complete(napi);
 
@@ -443,19 +396,52 @@ static int rmnet_mhi_disable_channels(struct rmnet_mhi_private *rmnet_mhi_ptr)
 
 static int rmnet_mhi_init_inbound(struct rmnet_mhi_private *rmnet_mhi_ptr)
 {
-	int res;
+	u32 i;
+	enum MHI_STATUS res;
+	struct mhi_skb_priv *rx_priv;
+	u32 cur_mru = rmnet_mhi_ptr->mru;
+	struct sk_buff *skb;
 
 	rmnet_log(MSG_INFO, "Entered\n");
 	rmnet_mhi_ptr->tx_buffers_max = mhi_get_max_desc(
 					rmnet_mhi_ptr->tx_client_handle);
 	rmnet_mhi_ptr->rx_buffers_max = mhi_get_max_desc(
 					rmnet_mhi_ptr->rx_client_handle);
-	atomic_set(&rmnet_mhi_ptr->rx_pool_len, 0);
-	res = rmnet_alloc_rx(rmnet_mhi_ptr,
-			     rmnet_mhi_ptr->allocation_flags);
 
-	rmnet_log(MSG_INFO, "Exited with %d\n", res);
-	return res;
+	for (i = 0; i < rmnet_mhi_ptr->rx_buffers_max; i++) {
+
+		skb = alloc_skb(cur_mru, rmnet_mhi_ptr->allocation_flags);
+
+		if (!skb) {
+			rmnet_log(MSG_CRITICAL,
+					"SKB allocation failure during open");
+			return -ENOMEM;
+		}
+		rx_priv = (struct mhi_skb_priv *)(skb->cb);
+
+		skb_reserve(skb, MHI_RX_HEADROOM);
+		rx_priv->dma_size = cur_mru - MHI_RX_HEADROOM;
+		rx_priv->dma_addr = 0;
+		skb_queue_tail(&rmnet_mhi_ptr->rx_buffers, skb);
+	}
+
+	/* Submit the RX buffers */
+	for (i = 0; i < rmnet_mhi_ptr->rx_buffers_max; i++) {
+		skb = skb_dequeue(&rmnet_mhi_ptr->rx_buffers);
+		rx_priv = (struct mhi_skb_priv *)(skb->cb);
+		res = mhi_queue_xfer(rmnet_mhi_ptr->rx_client_handle,
+						    skb->data,
+						    rx_priv->dma_size,
+						    MHI_EOT);
+		if (MHI_STATUS_SUCCESS != res) {
+			rmnet_log(MSG_CRITICAL,
+					"mhi_queue_xfer failed, error %d", res);
+			return -EIO;
+		}
+		skb_queue_tail(&rmnet_mhi_ptr->rx_buffers, skb);
+	}
+	rmnet_log(MSG_INFO, "Exited\n");
+	return 0;
 }
 
 static void rmnet_mhi_tx_cb(struct mhi_result *result)
@@ -507,10 +493,10 @@ static void rmnet_mhi_tx_cb(struct mhi_result *result)
 		    tx_cb_skb_free_burst_max[rmnet_mhi_ptr->dev_index]);
 
 	/* In case we couldn't write again, now we can! */
-	spin_lock_irqsave(&rmnet_mhi_ptr->out_chan_full_lock, flags);
+	read_lock_irqsave(&rmnet_mhi_ptr->out_chan_full_lock, flags);
 	rmnet_log(MSG_VERBOSE, "Waking up queue\n");
 	netif_wake_queue(dev);
-	spin_unlock_irqrestore(&rmnet_mhi_ptr->out_chan_full_lock, flags);
+	read_unlock_irqrestore(&rmnet_mhi_ptr->out_chan_full_lock, flags);
 	rmnet_log(MSG_VERBOSE, "Exited\n");
 }
 
@@ -615,8 +601,9 @@ static int rmnet_mhi_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct rmnet_mhi_private *rmnet_mhi_ptr =
 			*(struct rmnet_mhi_private **)netdev_priv(dev);
-	int res = 0;
+	enum MHI_STATUS res = MHI_STATUS_reserved;
 	unsigned long flags;
+	int retry = 0;
 	struct mhi_skb_priv *tx_priv;
 
 	rmnet_log(MSG_VERBOSE, "Entered chan %d\n", rmnet_mhi_ptr->tx_channel);
@@ -624,31 +611,37 @@ static int rmnet_mhi_xmit(struct sk_buff *skb, struct net_device *dev)
 	tx_priv = (struct mhi_skb_priv *)(skb->cb);
 	tx_priv->dma_size = skb->len;
 	tx_priv->dma_addr = 0;
+	do {
+		retry = 0;
+		res = mhi_queue_xfer(rmnet_mhi_ptr->tx_client_handle,
+						    skb->data,
+						    skb->len,
+						    MHI_EOT);
 
-	if (mhi_get_free_desc(rmnet_mhi_ptr->tx_client_handle) <= 0) {
-		rmnet_log(MSG_VERBOSE, "Stopping Queue\n");
-		spin_lock_irqsave(&rmnet_mhi_ptr->out_chan_full_lock,
-				  flags);
-		tx_ring_full_count[rmnet_mhi_ptr->dev_index]++;
-		netif_stop_queue(dev);
-		spin_unlock_irqrestore(&rmnet_mhi_ptr->out_chan_full_lock,
-				       flags);
-		return NETDEV_TX_BUSY;
-	}
-	res = mhi_queue_xfer(rmnet_mhi_ptr->tx_client_handle,
-			     skb->data,
-			     skb->len,
-			     MHI_EOT);
+		if (-ENOSPC == res) {
+			write_lock_irqsave(&rmnet_mhi_ptr->out_chan_full_lock,
+									flags);
+			if (!mhi_get_free_desc(
+					    rmnet_mhi_ptr->tx_client_handle)) {
+				/* Stop writing until we can write again */
+				tx_ring_full_count[rmnet_mhi_ptr->dev_index]++;
+				netif_stop_queue(dev);
+				rmnet_log(MSG_VERBOSE, "Stopping Queue\n");
+				goto rmnet_mhi_xmit_error_cleanup;
+			} else {
+				retry = 1;
+			}
+			write_unlock_irqrestore(
+					&rmnet_mhi_ptr->out_chan_full_lock,
+					flags);
+		}
+	} while (retry);
 
-	if (res != 0) {
-		rmnet_log(MSG_CRITICAL, "Failed to queue with reason:%d\n",
-			  res);
-		spin_lock_irqsave(&rmnet_mhi_ptr->out_chan_full_lock,
-				  flags);
+	if (MHI_STATUS_SUCCESS != res) {
 		netif_stop_queue(dev);
-		spin_unlock_irqrestore(&rmnet_mhi_ptr->out_chan_full_lock,
-				       flags);
-		return NETDEV_TX_BUSY;
+		rmnet_log(MSG_CRITICAL,
+			  "mhi_queue_xfer failed, error %d\n", res);
+		goto rmnet_mhi_xmit_error_cleanup;
 	}
 
 	skb_queue_tail(&(rmnet_mhi_ptr->tx_buffers), skb);
@@ -657,8 +650,12 @@ static int rmnet_mhi_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	tx_queued_packets_count[rmnet_mhi_ptr->dev_index]++;
 	rmnet_log(MSG_VERBOSE, "Exited\n");
+	return 0;
 
-	return NETDEV_TX_OK;
+rmnet_mhi_xmit_error_cleanup:
+	rmnet_log(MSG_VERBOSE, "Ring full\n");
+	write_unlock_irqrestore(&rmnet_mhi_ptr->out_chan_full_lock, flags);
+	return NETDEV_TX_BUSY;
 }
 
 static int rmnet_mhi_ioctl_extended(struct net_device *dev, struct ifreq *ifr)
@@ -802,7 +799,7 @@ static int rmnet_mhi_enable_iface(struct rmnet_mhi_private *rmnet_mhi_ptr)
 {
 	int ret = 0;
 	struct rmnet_mhi_private **rmnet_mhi_ctxt = NULL;
-	int r = 0;
+	enum MHI_STATUS r = MHI_STATUS_SUCCESS;
 
 	memset(tx_interrupts_count, 0, sizeof(tx_interrupts_count));
 	memset(rx_interrupts_count, 0, sizeof(rx_interrupts_count));
@@ -833,7 +830,7 @@ static int rmnet_mhi_enable_iface(struct rmnet_mhi_private *rmnet_mhi_ptr)
 		rmnet_log(MSG_INFO,
 			"Opening TX channel\n");
 		r = mhi_open_channel(rmnet_mhi_ptr->tx_client_handle);
-		if (r != 0) {
+		if (r != MHI_STATUS_SUCCESS) {
 			rmnet_log(MSG_CRITICAL,
 				"Failed to start TX chan ret %d\n", r);
 			goto mhi_tx_chan_start_fail;
@@ -845,7 +842,7 @@ static int rmnet_mhi_enable_iface(struct rmnet_mhi_private *rmnet_mhi_ptr)
 		rmnet_log(MSG_INFO,
 			"Opening RX channel\n");
 		r = mhi_open_channel(rmnet_mhi_ptr->rx_client_handle);
-		if (r != 0) {
+		if (r != MHI_STATUS_SUCCESS) {
 			rmnet_log(MSG_CRITICAL,
 				"Failed to start RX chan ret %d\n", r);
 			goto mhi_rx_chan_start_fail;
@@ -912,7 +909,7 @@ static void rmnet_mhi_cb(struct mhi_cb_info *cb_info)
 {
 	struct rmnet_mhi_private *rmnet_mhi_ptr;
 	struct mhi_result *result;
-	int r = 0;
+	enum MHI_STATUS r = MHI_STATUS_SUCCESS;
 
 	if (NULL != cb_info && NULL != cb_info->result) {
 		result = cb_info->result;
@@ -920,7 +917,6 @@ static void rmnet_mhi_cb(struct mhi_cb_info *cb_info)
 	} else {
 		rmnet_log(MSG_CRITICAL,
 			"Invalid data in MHI callback, quitting\n");
-		return;
 	}
 
 	switch (cb_info->cb_reason) {
@@ -984,7 +980,7 @@ static struct mhi_client_info_t rmnet_mhi_info = {rmnet_mhi_cb};
 static int __init rmnet_mhi_init(void)
 {
 	int i;
-	int res = 0;
+	enum MHI_STATUS res = MHI_STATUS_SUCCESS;
 	struct rmnet_mhi_private *rmnet_mhi_ptr = 0;
 	rmnet_ipc_log = ipc_log_context_create(RMNET_IPC_LOG_PAGES,
 						"mhi_rmnet", 0);
@@ -999,7 +995,7 @@ static int __init rmnet_mhi_init(void)
 
 		rmnet_mhi_ptr->tx_client_handle = 0;
 		rmnet_mhi_ptr->rx_client_handle = 0;
-		spin_lock_init(&rmnet_mhi_ptr->out_chan_full_lock);
+		rwlock_init(&rmnet_mhi_ptr->out_chan_full_lock);
 
 		rmnet_mhi_ptr->mru = MHI_DEFAULT_MRU;
 		rmnet_mhi_ptr->dev_index = i;
@@ -1009,7 +1005,7 @@ static int __init rmnet_mhi_init(void)
 			rmnet_mhi_ptr->tx_channel, 0,
 			&rmnet_mhi_info, rmnet_mhi_ptr);
 
-		if (0 != res) {
+		if (MHI_STATUS_SUCCESS != res) {
 			rmnet_mhi_ptr->tx_client_handle = 0;
 			rmnet_log(MSG_CRITICAL,
 				"mhi_register_channel failed chan %d ret %d\n",
@@ -1020,15 +1016,12 @@ static int __init rmnet_mhi_init(void)
 			rmnet_mhi_ptr->rx_channel, 0,
 			&rmnet_mhi_info, rmnet_mhi_ptr);
 
-		if (0 != res) {
+		if (MHI_STATUS_SUCCESS != res) {
 			rmnet_mhi_ptr->rx_client_handle = 0;
 			rmnet_log(MSG_CRITICAL,
 				"mhi_register_channel failed chan %d, ret %d\n",
 				rmnet_mhi_ptr->rx_channel, res);
 		}
-
-		INIT_WORK(&rmnet_mhi_ptr->alloc_work, rmnet_mhi_alloc_work);
-		spin_lock_init(&rmnet_mhi_ptr->alloc_lock);
 	}
 	return 0;
 }

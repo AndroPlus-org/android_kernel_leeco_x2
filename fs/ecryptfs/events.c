@@ -1,6 +1,6 @@
 /**
  * eCryptfs: Linux filesystem encryption layer
- * Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+ * Copyright (c) 2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -42,7 +42,7 @@ void ecryptfs_free_events(void)
  * The function returns a handle to be passed
  * to unregister function.
  */
-int ecryptfs_register_to_events(const struct ecryptfs_events *ops)
+int ecryptfs_register_to_events(struct ecryptfs_events *ops)
 {
 	int ret_value = 0;
 
@@ -115,7 +115,7 @@ out:
  * The caller must pass ecryptfs data, which was received in one
  * of the callback invocations.
  */
-bool ecryptfs_is_page_in_metadata(const void *data, pgoff_t offset)
+bool ecryptfs_is_page_in_metadata(void *data, pgoff_t offset)
 {
 
 	struct ecryptfs_crypt_stat *stat = NULL;
@@ -145,7 +145,7 @@ end:
  * Given two ecryptfs data, the function
  * decides whether they are equal.
  */
-inline bool ecryptfs_is_data_equal(const void *data1, const void *data2)
+inline bool ecryptfs_is_data_equal(void *data1, void *data2)
 {
 	/* pointer comparison*/
 	return data1 == data2;
@@ -155,7 +155,7 @@ inline bool ecryptfs_is_data_equal(const void *data1, const void *data2)
  * Given ecryptfs data, the function
  * returns appropriate key size.
  */
-size_t ecryptfs_get_key_size(const void *data)
+size_t ecryptfs_get_key_size(void *data)
 {
 
 	struct ecryptfs_crypt_stat *stat = NULL;
@@ -173,67 +173,49 @@ size_t ecryptfs_get_key_size(const void *data)
  *
  * !!! crypt_stat cipher name and mode must be initialized
  */
-size_t ecryptfs_get_salt_size(const void *data)
+size_t ecryptfs_get_salt_size(void *data)
 {
+	struct ecryptfs_crypt_stat *stat = NULL;
+	unsigned char final[2*ECRYPTFS_MAX_CIPHER_NAME_SIZE+1];
+
 	if (!data) {
 		ecryptfs_printk(KERN_ERR,
 				"ecryptfs_get_salt_size: invalid data parameter\n");
 		return 0;
 	}
 
-	return ecryptfs_get_salt_size_for_cipher(data);
+	stat = (struct ecryptfs_crypt_stat *)data;
+	return ecryptfs_get_salt_size_for_cipher(
+			ecryptfs_get_full_cipher(stat->cipher,
+						 stat->cipher_mode,
+						 final, sizeof(final)));
 
 }
 
 /**
- * Given ecryptfs data and cipher string, the function
- * returns true if provided cipher and the one in ecryptfs match.
+ * Given ecryptfs data, the function
+ * returns appropriate cipher.
  */
-bool ecryptfs_cipher_match(const void *data,
-		const unsigned char *cipher, size_t cipher_size)
+const unsigned char *ecryptfs_get_cipher(void *data)
 {
 	unsigned char final[2*ECRYPTFS_MAX_CIPHER_NAME_SIZE+1];
-	const unsigned char *ecryptfs_cipher = NULL;
 	struct ecryptfs_crypt_stat *stat = NULL;
 
-	if (!data || !cipher) {
+	if (!data) {
 		ecryptfs_printk(KERN_ERR,
 			"ecryptfs_get_cipher: invalid data parameter\n");
-		return false;
+		return NULL;
 	}
-
-	if (!cipher_size || cipher_size > sizeof(final)) {
-		ecryptfs_printk(KERN_ERR,
-				"ecryptfs_get_cipher: cipher_size\n");
-		return false;
-	}
-
 	stat = (struct ecryptfs_crypt_stat *)data;
-	ecryptfs_cipher = ecryptfs_get_full_cipher(stat->cipher,
-			stat->cipher_mode,
+	return ecryptfs_get_full_cipher(stat->cipher, stat->cipher_mode,
 			final, sizeof(final));
-
-	if (!ecryptfs_cipher) {
-		ecryptfs_printk(KERN_ERR,
-				"ecryptfs_get_cipher: internal error while parsing cipher\n");
-		return false;
-	}
-
-	if (strcmp(ecryptfs_cipher, cipher)) {
-		if (ecryptfs_verbosity > 0)
-			ecryptfs_dump_cipher(stat);
-
-		return false;
-	}
-
-	return true;
 }
 
 /**
  * Given ecryptfs data, the function
  * returns file encryption key.
  */
-const unsigned char *ecryptfs_get_key(const void *data)
+const unsigned char *ecryptfs_get_key(void *data)
 {
 
 	struct ecryptfs_crypt_stat *stat = NULL;
@@ -251,7 +233,7 @@ const unsigned char *ecryptfs_get_key(const void *data)
  * Given ecryptfs data, the function
  * returns file encryption salt.
  */
-const unsigned char *ecryptfs_get_salt(const void *data)
+const unsigned char *ecryptfs_get_salt(void *data)
 {
 	struct ecryptfs_crypt_stat *stat = NULL;
 
@@ -297,7 +279,7 @@ bool ecryptfs_check_space_for_salt(const size_t key_size,
  * or for all other general purposes
  */
 size_t ecryptfs_get_key_size_to_enc_data(
-		const struct ecryptfs_crypt_stat *crypt_stat)
+		struct ecryptfs_crypt_stat *crypt_stat)
 {
 	if (!crypt_stat)
 		return 0;
@@ -317,7 +299,7 @@ size_t ecryptfs_get_key_size_to_enc_data(
  * !!! crypt_stat cipher name and mode must be initialized
  */
 size_t ecryptfs_get_key_size_to_store_key(
-		const struct ecryptfs_crypt_stat *crypt_stat)
+		struct ecryptfs_crypt_stat *crypt_stat)
 {
 	size_t salt_size = 0;
 
@@ -347,14 +329,14 @@ size_t ecryptfs_get_key_size_to_store_key(
  * !!! crypt_stat cipher name and mode must be initialized
  */
 size_t ecryptfs_get_key_size_to_restore_key(size_t stored_key_size,
-		const struct ecryptfs_crypt_stat *crypt_stat)
+		const char *cipher)
 {
 	size_t salt_size = 0;
 
-	if (!crypt_stat)
+	if (!cipher)
 		return 0;
 
-	salt_size = ecryptfs_get_salt_size_for_cipher(crypt_stat);
+	salt_size = ecryptfs_get_salt_size_for_cipher(cipher);
 
 	if (salt_size >= stored_key_size) {
 		ecryptfs_printk(KERN_WARNING,
@@ -368,26 +350,12 @@ size_t ecryptfs_get_key_size_to_restore_key(size_t stored_key_size,
 }
 
 /**
- * Given crypt_stat, the function returns appropriate salt size.
+ * Given cipher, the function returns appropriate salt size.
  */
-size_t ecryptfs_get_salt_size_for_cipher(
-		const struct ecryptfs_crypt_stat *crypt_stat)
+size_t ecryptfs_get_salt_size_for_cipher(const char *cipher)
 {
 	if (!get_events() || !(get_events()->get_salt_key_size_cb))
 		return 0;
 
-	return get_events()->get_salt_key_size_cb(crypt_stat);
+	return get_events()->get_salt_key_size_cb(cipher);
 }
-
-/**
- * Given mount_crypt_stat, the function returns appropriate salt size.
- */
-size_t ecryptfs_get_salt_size_for_cipher_mount(
-		const struct ecryptfs_mount_crypt_stat *crypt_stat)
-{
-	if (!get_events() || !(get_events()->get_salt_key_size_cb))
-		return 0;
-
-	return get_events()->get_salt_key_size_cb(crypt_stat);
-}
-

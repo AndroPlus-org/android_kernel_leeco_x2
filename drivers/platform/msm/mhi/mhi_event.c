@@ -1,4 +1,4 @@
-/* Copyright (c) 2015-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -68,19 +68,6 @@ int mhi_populate_event_cfg(struct mhi_device_ctxt *mhi_dev_ctxt)
 		else
 			mhi_dev_ctxt->ev_ring_props[i].mhi_handler_ptr =
 							mhi_msi_ipa_handlr;
-		if (MHI_HW_RING == GET_EV_PROPS(EV_TYPE,
-			mhi_dev_ctxt->ev_ring_props[i].flags)) {
-			mhi_dev_ctxt->ev_ring_props[i].class = MHI_HW_RING;
-			mhi_dev_ctxt->mmio_info.nr_hw_event_rings++;
-		} else {
-			mhi_dev_ctxt->ev_ring_props[i].class = MHI_SW_RING;
-			mhi_dev_ctxt->mmio_info.nr_sw_event_rings++;
-		}
-		mhi_log(MHI_MSG_INFO,
-		 "Detected %d SW EV rings and %d HW EV rings out of %d EV rings\n",
-		  mhi_dev_ctxt->mmio_info.nr_sw_event_rings,
-		  mhi_dev_ctxt->mmio_info.nr_hw_event_rings,
-		  mhi_dev_ctxt->mmio_info.nr_event_rings);
 	}
 dt_error:
 	return r;
@@ -133,7 +120,7 @@ void ring_ev_db(struct mhi_device_ctxt *mhi_dev_ctxt, u32 event_ring_index)
 					event_ring_index, db_value);
 }
 
-static int mhi_event_ring_init(struct mhi_event_ctxt *ev_list,
+static enum MHI_STATUS mhi_event_ring_init(struct mhi_event_ctxt *ev_list,
 				struct mhi_ring *ring, u32 el_per_ring,
 				u32 intmodt_val, u32 msi_vec)
 {
@@ -146,7 +133,7 @@ static int mhi_event_ring_init(struct mhi_event_ctxt *ev_list,
 	ring->overwrite_en = 0;
 	/* Flush writes to MMIO */
 	wmb();
-	return 0;
+	return MHI_STATUS_SUCCESS;
 }
 
 void init_event_ctxt_array(struct mhi_device_ctxt *mhi_dev_ctxt)
@@ -168,7 +155,7 @@ void init_event_ctxt_array(struct mhi_device_ctxt *mhi_dev_ctxt)
 int init_local_ev_ring_by_type(struct mhi_device_ctxt *mhi_dev_ctxt,
 		  enum MHI_TYPE_EVENT_RING type)
 {
-	int ret_val = 0;
+	enum MHI_STATUS ret_val = MHI_STATUS_SUCCESS;
 	u32 i;
 
 	mhi_log(MHI_MSG_INFO, "Entered\n");
@@ -189,10 +176,11 @@ int init_local_ev_ring_by_type(struct mhi_device_ctxt *mhi_dev_ctxt,
 	return 0;
 }
 
-int mhi_add_elements_to_event_rings(struct mhi_device_ctxt *mhi_dev_ctxt,
+enum MHI_STATUS mhi_add_elements_to_event_rings(
+					struct mhi_device_ctxt *mhi_dev_ctxt,
 					enum STATE_TRANSITION new_state)
 {
-	int ret_val = 0;
+	enum MHI_STATUS ret_val = MHI_STATUS_SUCCESS;
 
 	switch (new_state) {
 	case STATE_TRANSITION_READY:
@@ -206,19 +194,19 @@ int mhi_add_elements_to_event_rings(struct mhi_device_ctxt *mhi_dev_ctxt,
 	default:
 		mhi_log(MHI_MSG_ERROR,
 			"Unrecognized event stage, %d\n", new_state);
-		ret_val = -EINVAL;
+		ret_val = MHI_STATUS_ERROR;
 		break;
 	}
 	return ret_val;
 }
 
-int mhi_init_local_event_ring(struct mhi_device_ctxt *mhi_dev_ctxt,
+enum MHI_STATUS mhi_init_local_event_ring(struct mhi_device_ctxt *mhi_dev_ctxt,
 					u32 nr_ev_el, u32 ring_index)
 {
 	union mhi_event_pkt *ev_pkt = NULL;
 	u32 i = 0;
 	unsigned long flags = 0;
-	int ret_val = 0;
+	enum MHI_STATUS ret_val = MHI_STATUS_SUCCESS;
 	spinlock_t *lock =
 		&mhi_dev_ctxt->mhi_ev_spinlock_list[ring_index];
 	struct mhi_ring *event_ctxt =
@@ -226,7 +214,7 @@ int mhi_init_local_event_ring(struct mhi_device_ctxt *mhi_dev_ctxt,
 
 	if (NULL == mhi_dev_ctxt || 0 == nr_ev_el) {
 		mhi_log(MHI_MSG_ERROR, "Bad Input data, quitting\n");
-		return -EINVAL;
+		return MHI_STATUS_ERROR;
 	}
 
 	spin_lock_irqsave(lock, flags);
@@ -239,9 +227,10 @@ int mhi_init_local_event_ring(struct mhi_device_ctxt *mhi_dev_ctxt,
 
 	for (i = 0; i < nr_ev_el - 1; ++i) {
 		ret_val = ctxt_add_element(event_ctxt, (void *)&ev_pkt);
-		if (0 != ret_val) {
+		if (MHI_STATUS_SUCCESS != ret_val) {
 			mhi_log(MHI_MSG_ERROR,
 				"Failed to insert el in ev ctxt\n");
+			ret_val = MHI_STATUS_ERROR;
 			break;
 		}
 	}

@@ -1095,8 +1095,7 @@ static void ath10k_peer_assoc_h_crypto(struct ath10k *ar,
 	lockdep_assert_held(&ar->conf_mutex);
 
 	bss = cfg80211_get_bss(ar->hw->wiphy, ar->hw->conf.chandef.chan,
-			       info->bssid, NULL, 0, IEEE80211_BSS_TYPE_ANY,
-			       IEEE80211_PRIVACY_ANY);
+			       info->bssid, NULL, 0, 0, 0);
 	if (bss) {
 		const struct cfg80211_bss_ies *ies;
 

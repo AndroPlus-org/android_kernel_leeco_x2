@@ -1,4 +1,4 @@
-/* Copyright (c) 2014-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2014-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -43,8 +43,6 @@ static DEFINE_PCI_DEVICE_TABLE(mhi_pcie_device_id) = {
 	{ MHI_PCIE_VENDOR_ID, MHI_PCIE_DEVICE_ID_9x35,
 		PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
 	{ MHI_PCIE_VENDOR_ID, MHI_PCIE_DEVICE_ID_ZIRC,
-		PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
-	{ MHI_PCIE_VENDOR_ID, MHI_PCIE_DEVICE_ID_9x55,
 		PCI_ANY_ID, PCI_ANY_ID, 0, 0, 0},
 	{ 0, },
 };
@@ -154,9 +152,8 @@ int mhi_ctxt_init(struct mhi_pcie_dev_info *mhi_pcie_dev)
 		"Setting IRQ Base to 0x%x\n", mhi_pcie_dev->core.irq_base);
 	mhi_pcie_dev->core.max_nr_msis = requested_msi_number;
 	ret_val = mhi_init_pm_sysfs(&pcie_device->dev);
-	if (ret_val) {
-		mhi_log(MHI_MSG_ERROR, "Failed to setup sysfs ret %d\n",
-								ret_val);
+	if (ret_val != 0) {
+		mhi_log(MHI_MSG_ERROR, "Failed to setup sysfs.\n");
 		goto sysfs_config_err;
 	}
 	if (!mhi_init_debugfs(&mhi_pcie_dev->mhi_ctxt))
@@ -167,10 +164,16 @@ int mhi_ctxt_init(struct mhi_pcie_dev_info *mhi_pcie_dev)
 	pcie_device->dev.platform_data = &mhi_pcie_dev->mhi_ctxt;
 	mhi_pcie_dev->mhi_ctxt.dev_info->plat_dev->dev.platform_data =
 						&mhi_pcie_dev->mhi_ctxt;
-	ret_val = mhi_reg_notifiers(&mhi_pcie_dev->mhi_ctxt);
-	if (ret_val) {
+	if (mhi_pcie_dev->mhi_ctxt.base_state == STATE_TRANSITION_BHI) {
+		ret_val = bhi_probe(mhi_pcie_dev);
+		if (ret_val) {
+			mhi_log(MHI_MSG_ERROR, "Failed to initialize BHI.\n");
+			goto mhi_state_transition_error;
+		}
+	}
+	if (MHI_STATUS_SUCCESS != mhi_reg_notifiers(&mhi_pcie_dev->mhi_ctxt)) {
 		mhi_log(MHI_MSG_ERROR, "Failed to register for notifiers\n");
-		goto mhi_state_transition_error;
+		return MHI_STATUS_ERROR;
 	}
 	mhi_log(MHI_MSG_INFO,
 			"Finished all driver probing returning ret_val %d.\n",
@@ -203,17 +206,17 @@ msi_config_err:
 }
 
 static const struct dev_pm_ops pm_ops = {
-	SET_RUNTIME_PM_OPS(mhi_runtime_suspend, mhi_runtime_resume, NULL)
-	SET_SYSTEM_SLEEP_PM_OPS(mhi_pci_suspend, mhi_pci_resume)
+	.runtime_suspend = mhi_runtime_suspend,
+	.runtime_resume = mhi_runtime_resume,
+	.runtime_idle = NULL,
 };
 
 static struct pci_driver mhi_pcie_driver = {
 	.name = "mhi_pcie_drv",
 	.id_table = mhi_pcie_device_id,
 	.probe = mhi_pci_probe,
-	.driver = {
-		.pm = &pm_ops
-	}
+	.suspend = mhi_pci_suspend,
+	.resume = mhi_pci_resume,
 };
 
 static int mhi_pci_probe(struct pci_dev *pcie_device,
@@ -234,7 +237,6 @@ static int mhi_pci_probe(struct pci_dev *pcie_device,
 	mhi_devices.nr_of_devices++;
 	plat_dev = mhi_devices.device_list[nr_dev].plat_dev;
 	pcie_device->dev.of_node = plat_dev->dev.of_node;
-	pm_runtime_put_noidle(&pcie_device->dev);
 	mhi_pcie_dev->pcie_device = pcie_device;
 	mhi_pcie_dev->mhi_pcie_driver = &mhi_pcie_driver;
 	mhi_pcie_dev->mhi_pci_link_event.events =
@@ -254,14 +256,9 @@ static int mhi_pci_probe(struct pci_dev *pcie_device,
 static int mhi_plat_probe(struct platform_device *pdev)
 {
 	u32 nr_dev = mhi_devices.nr_of_devices;
-	int r = 0;
 
 	mhi_log(MHI_MSG_INFO, "Entered\n");
 	mhi_devices.device_list[nr_dev].plat_dev = pdev;
-	r = dma_set_mask(&pdev->dev, MHI_DMA_MASK);
-	if (r)
-		mhi_log(MHI_MSG_CRITICAL,
-			"Failed to set mask for DMA ret %d\n", r);
 	mhi_log(MHI_MSG_INFO, "Exited\n");
 	return 0;
 }
@@ -273,6 +270,7 @@ static struct platform_driver mhi_plat_driver = {
 		.name		= "mhi",
 		.owner		= THIS_MODULE,
 		.of_match_table	= mhi_plat_match,
+		.pm = &pm_ops,
 	},
 };
 
@@ -319,10 +317,6 @@ error:
 
 DECLARE_PCI_FIXUP_HEADER(MHI_PCIE_VENDOR_ID,
 		MHI_PCIE_DEVICE_ID_9x35,
-		mhi_msm_fixup);
-
-DECLARE_PCI_FIXUP_HEADER(MHI_PCIE_VENDOR_ID,
-		MHI_PCIE_DEVICE_ID_9x55,
 		mhi_msm_fixup);
 
 DECLARE_PCI_FIXUP_HEADER(MHI_PCIE_VENDOR_ID,

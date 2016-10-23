@@ -271,15 +271,19 @@ static struct cfg80211_bss *cfg80211_get_conn_bss(struct wireless_dev *wdev)
 {
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 	struct cfg80211_bss *bss;
+	u16 capa = WLAN_CAPABILITY_ESS;
 
 	ASSERT_WDEV_LOCK(wdev);
+
+	if (wdev->conn->params.privacy)
+		capa |= WLAN_CAPABILITY_PRIVACY;
 
 	bss = cfg80211_get_bss(wdev->wiphy, wdev->conn->params.channel,
 			       wdev->conn->params.bssid,
 			       wdev->conn->params.ssid,
 			       wdev->conn->params.ssid_len,
-			       wdev->conn_bss_type,
-			       IEEE80211_PRIVACY(wdev->conn->params.privacy));
+			       WLAN_CAPABILITY_ESS | WLAN_CAPABILITY_PRIVACY,
+			       capa);
 	if (!bss)
 		return NULL;
 
@@ -648,8 +652,8 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 		WARN_ON_ONCE(!wiphy_to_rdev(wdev->wiphy)->ops->connect);
 		bss = cfg80211_get_bss(wdev->wiphy, NULL, bssid,
 				       wdev->ssid, wdev->ssid_len,
-				       wdev->conn_bss_type,
-				       IEEE80211_PRIVACY_ANY);
+				       WLAN_CAPABILITY_ESS,
+				       WLAN_CAPABILITY_ESS);
 		if (bss)
 			cfg80211_hold_bss(bss_from_pub(bss));
 	}
@@ -702,32 +706,19 @@ void __cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
 	kfree(country_ie);
 }
 
-/* Consumes bss object one way or another */
-void cfg80211_connect_bss(struct net_device *dev, const u8 *bssid,
-			  struct cfg80211_bss *bss, const u8 *req_ie,
-			  size_t req_ie_len, const u8 *resp_ie,
-			  size_t resp_ie_len, u16 status, gfp_t gfp)
+void cfg80211_connect_result(struct net_device *dev, const u8 *bssid,
+			     const u8 *req_ie, size_t req_ie_len,
+			     const u8 *resp_ie, size_t resp_ie_len,
+			     u16 status, gfp_t gfp)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
 	struct cfg80211_event *ev;
 	unsigned long flags;
 
-	if (bss) {
-		/* Make sure the bss entry provided by the driver is valid. */
-		struct cfg80211_internal_bss *ibss = bss_from_pub(bss);
-
-		if (WARN_ON(list_empty(&ibss->list))) {
-			cfg80211_put_bss(wdev->wiphy, bss);
-			return;
-		}
-	}
-
 	ev = kzalloc(sizeof(*ev) + req_ie_len + resp_ie_len, gfp);
-	if (!ev) {
-		cfg80211_put_bss(wdev->wiphy, bss);
+	if (!ev)
 		return;
-	}
 
 	ev->type = EVENT_CONNECT_RESULT;
 	if (bssid)
@@ -742,9 +733,6 @@ void cfg80211_connect_bss(struct net_device *dev, const u8 *bssid,
 		ev->cr.resp_ie_len = resp_ie_len;
 		memcpy((void *)ev->cr.resp_ie, resp_ie, resp_ie_len);
 	}
-	if (bss)
-		cfg80211_hold_bss(bss_from_pub(bss));
-	ev->cr.bss = bss;
 	ev->cr.status = status;
 
 	spin_lock_irqsave(&wdev->event_lock, flags);
@@ -752,7 +740,7 @@ void cfg80211_connect_bss(struct net_device *dev, const u8 *bssid,
 	spin_unlock_irqrestore(&wdev->event_lock, flags);
 	queue_work(cfg80211_wq, &rdev->event_work);
 }
-EXPORT_SYMBOL(cfg80211_connect_bss);
+EXPORT_SYMBOL(cfg80211_connect_result);
 
 /* Consumes bss object one way or another */
 void __cfg80211_roamed(struct wireless_dev *wdev,
@@ -822,8 +810,8 @@ void cfg80211_roamed(struct net_device *dev,
 	struct cfg80211_bss *bss;
 
 	bss = cfg80211_get_bss(wdev->wiphy, channel, bssid, wdev->ssid,
-			       wdev->ssid_len,
-			       wdev->conn_bss_type, IEEE80211_PRIVACY_ANY);
+			       wdev->ssid_len, WLAN_CAPABILITY_ESS,
+			       WLAN_CAPABILITY_ESS);
 	if (WARN_ON(!bss))
 		return;
 
@@ -915,8 +903,7 @@ void __cfg80211_disconnected(struct net_device *dev, const u8 *ie,
 }
 
 void cfg80211_disconnected(struct net_device *dev, u16 reason,
-			   const u8 *ie, size_t ie_len,
-			   bool locally_generated, gfp_t gfp)
+			   const u8 *ie, size_t ie_len, gfp_t gfp)
 {
 	struct wireless_dev *wdev = dev->ieee80211_ptr;
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wdev->wiphy);
@@ -932,7 +919,6 @@ void cfg80211_disconnected(struct net_device *dev, u16 reason,
 	ev->dc.ie_len = ie_len;
 	memcpy((void *)ev->dc.ie, ie, ie_len);
 	ev->dc.reason = reason;
-	ev->dc.locally_generated = locally_generated;
 
 	spin_lock_irqsave(&wdev->event_lock, flags);
 	list_add_tail(&ev->list, &wdev->event_list);
@@ -993,9 +979,6 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
 	wdev->connect_keys = connkeys;
 	memcpy(wdev->ssid, connect->ssid, connect->ssid_len);
 	wdev->ssid_len = connect->ssid_len;
-
-	wdev->conn_bss_type = connect->pbss ? IEEE80211_BSS_TYPE_PBSS :
-					      IEEE80211_BSS_TYPE_ESS;
 
 	if (!rdev->ops->connect)
 		err = cfg80211_sme_connect(wdev, connect, prev_bssid);

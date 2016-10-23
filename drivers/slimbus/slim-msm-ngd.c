@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -26,6 +26,7 @@
 #include <linux/of_slimbus.h>
 #include <linux/timer.h>
 #include <linux/msm-sps.h>
+#include <linux/reboot.h>
 #include "slim-msm.h"
 
 #define NGD_SLIM_NAME	"ngd_msm_ctrl"
@@ -1271,9 +1272,11 @@ static int ngd_slim_power_up(struct msm_slim_ctrl *dev, bool mdm_restart)
 	/* reconnect BAM pipes if needed and enable NGD */
 	ngd_slim_setup(dev);
 
-	timeout = wait_for_completion_timeout(&dev->reconf, HZ);
+	timeout = wait_for_completion_timeout(&dev->reconf, 3 * HZ);
 	if (!timeout) {
 		SLIM_WARN(dev, "capability exchange timed-out\n");
+		pr_err("capability exchange timed-out, Now to machine_restarted!!!\n");
+		machine_restart("slim_power_up");
 		return -ETIMEDOUT;
 	}
 	/* mutliple transactions waiting on slimbus to power up? */
@@ -1677,7 +1680,6 @@ static int ngd_slim_probe(struct platform_device *pdev)
 	pm_runtime_set_suspended(dev->dev);
 	pm_runtime_enable(dev->dev);
 
-	dev->dsp.nb.priority = 4;
 	dev->dsp.nb.notifier_call = dsp_ssr_notify_cb;
 	dev->dsp.ssr = subsys_notif_register_notifier("adsp",
 						&dev->dsp.nb);

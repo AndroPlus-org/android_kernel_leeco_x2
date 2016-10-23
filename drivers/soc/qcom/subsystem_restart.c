@@ -37,7 +37,7 @@
 #include <soc/qcom/subsystem_notif.h>
 #include <soc/qcom/socinfo.h>
 #include <soc/qcom/sysmon.h>
-
+#include <linux/panic_reason.h>
 #include <asm/current.h>
 
 #define DISABLE_SSR 0x9889deed
@@ -259,8 +259,7 @@ static ssize_t firmware_name_store(struct device *dev,
 
 	pr_info("Changing subsys fw_name to %s\n", buf);
 	mutex_lock(&track->lock);
-	strlcpy(subsys->desc->fw_name, buf,
-			min(count + 1, sizeof(subsys->desc->fw_name)));
+	strlcpy(subsys->desc->fw_name, buf, count + 1);
 	mutex_unlock(&track->lock);
 	return orig_count;
 }
@@ -1008,6 +1007,7 @@ int subsystem_restart_dev(struct subsys_device *dev)
 		__subsystem_restart_dev(dev);
 		break;
 	case RESET_SOC:
+		set_panic_trig_rsn(TRIG_SUB_SYSTEM_RESET);
 		__pm_stay_awake(&dev->ssr_wlock);
 		schedule_work(&dev->device_restart_work);
 		return 0;
@@ -1119,6 +1119,7 @@ static ssize_t subsys_debugfs_write(struct file *filp,
 	struct subsys_device *subsys = filp->private_data;
 	char buf[10];
 	char *cmp;
+	int restart_level_tmp;
 
 	cnt = min(cnt, sizeof(buf) - 1);
 	if (copy_from_user(&buf, ubuf, cnt))
@@ -1126,10 +1127,18 @@ static ssize_t subsys_debugfs_write(struct file *filp,
 	buf[cnt] = '\0';
 	cmp = strstrip(buf);
 
-	if (!strcmp(cmp, "restart")) {
+	if (!strcmp(cmp, "rstmpss")) {
+		restart_level_tmp = subsys->restart_level;
+		subsys->restart_level=RESET_SUBSYS_COUPLED;
+		if (subsystem_restart_dev(subsys)){
+			subsys->restart_level = restart_level_tmp;
+			return -EIO;}
+		else
+			subsys->restart_level = restart_level_tmp;
+	}else if (!strcmp(cmp, "restart")){
 		if (subsystem_restart_dev(subsys))
 			return -EIO;
-	} else if (!strcmp(cmp, "get")) {
+	}else if (!strcmp(cmp, "get")) {
 		if (subsystem_get(subsys->desc->name))
 			return -EIO;
 	} else if (!strcmp(cmp, "put")) {

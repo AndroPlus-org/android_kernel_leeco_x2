@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -49,6 +49,7 @@
 #include <linux/suspend.h>
 #include <linux/uaccess.h>
 #include <linux/uio_driver.h>
+#include <linux/panic_reason.h>
 
 #define CREATE_TRACE_POINTS
 #define TRACE_MSM_THERMAL
@@ -159,6 +160,7 @@ static bool ocr_nodes_called;
 static bool ocr_probed;
 static bool ocr_reg_init_defer;
 static bool hotplug_enabled;
+static bool interrupt_mode_enable;
 static bool msm_thermal_probed;
 static bool gfx_crit_phase_ctrl_enabled;
 static bool gfx_warm_phase_ctrl_enabled;
@@ -2705,6 +2707,7 @@ static void msm_thermal_bite(int zone_id, long temp)
 	int ret = 0;
 
 	ret = zone_id_to_tsen_id(zone_id, &tsens_id);
+	set_panic_trig_rsn(TRIG_OVER_TEMPERATURE);
 	if (ret < 0) {
 		pr_err("Zone:%d reached temperature:%ld. Err = %d System reset\n",
 			zone_id, temp, ret);
@@ -4674,9 +4677,10 @@ static void __ref disable_msm_thermal(void)
 
 static void interrupt_mode_init(void)
 {
-	if (!msm_thermal_probed)
+	if (!msm_thermal_probed) {
+		interrupt_mode_enable = true;
 		return;
-
+	}
 	if (polling_enabled) {
 		polling_enabled = 0;
 		create_sensor_zone_id_map();
@@ -7086,6 +7090,11 @@ static int msm_thermal_dev_probe(struct platform_device *pdev)
 	ret = msm_thermal_init(&data);
 	msm_thermal_probed = true;
 
+	if (interrupt_mode_enable) {
+		interrupt_mode_init();
+		interrupt_mode_enable = false;
+	}
+
 	return ret;
 fail:
 	if (ret)
@@ -7221,6 +7230,7 @@ int __init msm_thermal_late_init(void)
 		}
 	}
 	msm_thermal_add_mx_nodes();
+	interrupt_mode_init();
 	create_cpu_topology_sysfs();
 	create_thermal_debugfs();
 	msm_thermal_add_bucket_info_nodes();

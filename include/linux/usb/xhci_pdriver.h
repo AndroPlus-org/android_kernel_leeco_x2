@@ -19,13 +19,9 @@
  * @usb3_lpm_capable:	determines if this xhci platform supports USB3
  *			LPM capability
  *
- * @imod_interval:	minimum inter-interrupt interval. Specified in
- *			250nsec increments.
- *
  */
 struct usb_xhci_pdata {
 	unsigned	usb3_lpm_capable:1;
-	unsigned	imod_interval;
 };
 
 #endif /* __USB_CORE_XHCI_PDRIVER_H */
