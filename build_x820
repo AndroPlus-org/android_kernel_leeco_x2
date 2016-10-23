@@ -1,0 +1,50 @@
+### GCC 4.9.x
+### I'm using UBERTC https://bitbucket.org/UBERTC/aarch64-linux-android-4.9-kernel
+
+export ARCH=arm64
+export PATH=~/aarch64-linux-android-4.9-kernel/bin/:$PATH
+### See prefix of file names in the toolchain's bin directory
+export CROSS_COMPILE=aarch64-linux-android-
+export JOBS=8
+
+make -C $PWD O=$PWD/out x820_defconfig
+make -j$JOBS -C $PWD O=$PWD/out ARCH=arm64
+make -j$JOBS -C $PWD O=$PWD/out ARCH=arm64 modules
+
+echo "checking for compiled kernel..."
+if [ -f out/arch/arm64/boot/Image ]
+then
+
+	echo "DONE"
+
+	### X820
+	../build_tools/mkbootimg \
+	--kernel out/arch/arm64/boot/Image \
+	--ramdisk ../build_tools/ramdisk_x820.cpio.gz \
+	--cmdline "console=ttyHSL0,115200,n8 androidboot.console=ttyHSL0 androidboot.hardware=qcom user_debug=31 msm_rtb.filter=0x237 ehci-hcd.park=3 lpm_levels.sleep_disabled=1 cma=32M@0-0xffffffff" \
+	--base 0x80000000 \
+	--pagesize 4096 \
+	--ramdisk_offset 0x01000000 \
+	--tags_offset 0x00000100 \
+	--output ../build_tools/boot_X820.img
+
+	### Version number
+	echo -n "Enter version number: "
+	read version
+
+	if [ -e ../build_tools/boot_X820.img ]
+	then
+
+		### Zip boot.img
+		cd ../build_tools/
+		#mv boot_F8132.img boot.img
+		#zip XP_AndroPlusKernel_Permissive_v.zip boot.img
+		#rm -f boot.img
+		cd ../kernel/
+
+		### Copy zip to my desktop
+		#dd if=XP_AndroPlusKernel_Permissive_v.zip of="/mnt/hgfs/VMShare/デスクトップ/XP_AndroPlusKernel_Permissive_v$version.zip"
+
+	fi
+
+fi
