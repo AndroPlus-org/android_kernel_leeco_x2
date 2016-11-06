@@ -125,6 +125,15 @@
 		qcom,master-en = <1>;
 		status = "okay";
 	};
+	
+	gpio@c900 { /* GPIO 10 - FPC fingerprint ID detect*/
+		qcom,mode = <0>;
+		qcom,pull = <0>;
+		qcom,vin-sel = <2>;
+		qcom,src-sel = <0>;
+		qcom,master-en = <1>;
+		status = "okay";
+	};
 };
 
 &pm8994_gpios {
@@ -250,6 +259,19 @@
 		clocks = <&clock_gcc clk_gcc_blsp2_uart6_apps_clk>,
 		 <&clock_gcc clk_gcc_blsp2_ahb_clk>;
         };
+
+        fpc_fpc1020 {
+		compatible = "fpc,fpc1020";
+		fpc,reset_gpio = <&msm_gpio 110 0>;
+		fpc,irq_gpio = <&msm_gpio 106 0>;
+		fpc,irq_flags = <0x2001>;
+		fpc,event-type = <4>;
+		fpc,event-code = <4>;
+		vcc_spi-supply = <&pm8950_l6>;
+		vdd_ana-supply = <&pm8950_l6>;
+		vdd_io-supply = <&pm8950_l6>;
+	};
+        
 };
 
 &blsp2_uart6 {
